@@ -2,11 +2,12 @@ const express = require("express");
 const { Client, GatewayIntentBits, Partials } = require("discord.js");
 const fs = require("fs");
 
-// 🌐 ANTI-SONO + API
+// 🌐 API + ANTI-SONO
 const app = express();
 
 app.get("/", (req, res) => res.send("API online"));
 
+// 🔍 VERIFICAR KEY
 app.get("/check", (req, res) => {
   const key = req.query.key;
 
@@ -15,11 +16,17 @@ app.get("/check", (req, res) => {
     keys = JSON.parse(fs.readFileSync("keys.json"));
   }
 
-  if (keys.includes(key)) {
-    return res.json({ valid: true });
+  const found = keys.find(k => k.key === key);
+
+  if (!found) {
+    return res.json({ valid: false });
   }
 
-  res.json({ valid: false });
+  if (found.expires && Date.now() > found.expires) {
+    return res.json({ valid: false, expired: true });
+  }
+
+  return res.json({ valid: true });
 });
 
 app.listen(process.env.PORT || 3000);
@@ -50,15 +57,27 @@ function generateKey(type) {
   if (type === "perm") return base + "-PERM";
 }
 
-// 💾 SALVAR KEY
-function saveKey(key) {
+// 💾 SALVAR KEY COM TEMPO
+function saveKey(key, type) {
   let keys = [];
 
   if (fs.existsSync("keys.json")) {
     keys = JSON.parse(fs.readFileSync("keys.json"));
   }
 
-  keys.push(key);
+  let expires = null;
+
+  if (type === "1d") {
+    expires = Date.now() + 24 * 60 * 60 * 1000;
+  } else if (type === "3d") {
+    expires = Date.now() + 3 * 24 * 60 * 60 * 1000;
+  }
+
+  keys.push({
+    key: key,
+    expires: expires
+  });
+
   fs.writeFileSync("keys.json", JSON.stringify(keys));
 }
 
@@ -113,7 +132,7 @@ client.on("messageCreate", async (msg) => {
     if (!type) return msg.reply("❌ Nenhum pedido.");
 
     const key = generateKey(type);
-    saveKey(key);
+    saveKey(key, type);
 
     const user = await client.users.fetch(userId);
 
